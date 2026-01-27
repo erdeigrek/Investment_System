@@ -1,0 +1,62 @@
+stages:
+  - id: 0
+    name: "Fundamenty systemu"
+    tasks:
+      - id: "0.1"
+        title: "Struktura pakietu + pyproject.toml"
+        done: true
+      - id: "0.2"
+        title: "Ingestion Stooq -> Parquet"
+        done: true
+
+  - id: 1
+    name: "Dane rynkowe i czas"
+    tasks:
+      - id: "1.1"
+        title: "Zrozumienie OHLC + returns + lookahead bias"
+        done: false
+      - id: "1.2"
+        title: "Feature engineering v1 (returns/vol/mom)"
+        done: false
+      - id: "1.3"
+        title: "Zapis features do data/processed"
+        done: false
+
+  - id: 2
+    name: "Model ML + walidacja TS"
+    tasks:
+      - id: "2.1"
+        title: "Target definition (np. next-day return sign)"
+        done: false
+      - id: "2.2"
+        title: "TimeSeriesSplit / walk-forward"
+        done: false
+      - id: "2.3"
+        title: "Baseline model + metryki"
+        done: false
+
+  - id: 3
+    name: "Backtest i portfolio"
+    tasks:
+      - id: "3.1"
+        title: "Backtest bez leaków (sygnał->pozycja->PnL)"
+        done: false
+      - id: "3.2"
+        title: "Koszty transakcyjne + slippage"
+        done: false
+      - id: "3.3"
+        title: "Raport: equity curve, drawdown, sharpe"
+        done: false
+
+  - id: 4
+    name: "NLP Sentiment (EN/PL/TR)"
+    tasks:
+      - id: "4.1"
+        title: "Pipeline news ingestion"
+        done: false
+      - id: "4.2"
+        title: "Sentiment scoring + agregacja dzienna"
+        done: false
+      - id: "4.3"
+        title: "Łączenie news features z price features"
+        done: false
