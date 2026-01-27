@@ -7,7 +7,7 @@ def stooq_symbol(symbol: str, market: str) -> str:
     if market == "us":
         return f"{symbol}.us"
     if market == "pl":
-        return f"{symbol}.wa"
+        return f"{symbol}"
     raise ValueError(f"Unknown market: {market}")
 
 def to_stooq_date(d: date) -> str:
@@ -30,7 +30,9 @@ def fetch_stooq_symbol(
         "d2": to_stooq_date(end),
     }
 
-    df = pd.read_csv(url, params=params)
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    full_url = f"{url}?{query}"
+    df = pd.read_csv(full_url)
 
     if df.empty:
         raise ValueError(f"No data returned for {stooq_sym}")

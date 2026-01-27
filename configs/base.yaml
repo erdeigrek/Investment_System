@@ -7,5 +7,5 @@ data:
 
 universe:
   us: ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA"  ]
-  pl: ["PKN", "PKO", "PEO", "CDR", "KGH"]
+  pl: [ "PKO", "PEO", "CDR", "KGH"]
   
