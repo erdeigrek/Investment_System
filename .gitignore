@@ -9,4 +9,8 @@ __pycache__/
 # Data
 data/
 
+# Teoria
+teoria/
+
+
 *.egg-info/
