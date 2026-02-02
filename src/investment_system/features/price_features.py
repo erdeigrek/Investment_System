@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 import pathlib as Path
-def sort_data(df: pd.DataFrame) -> pd.DataFrame:
-    return df.sort_values(["symbol", "date"]).reset_index(drop=True)
+def sort_data(df: pd.DataFrame,sorted_columns: list[str] = ["symbol", "date"]) -> pd.DataFrame:
+    return df.sort_values(sorted_columns).reset_index(drop=True)
 
 def log_return(close: pd.Series) -> pd.Series:
     """Log Return - """
@@ -67,13 +67,16 @@ def validate_data(df: pd.DataFrame) -> None:
     if (df["close"] <= 0).any():
         raise ValueError("Column 'close' must contain only positive values")
 
-def add_price_features(data: pd.DataFrame) -> pd.DataFrame:
+def add_price_features(data: pd.DataFrame, windows: tuple[int,...],sorted_columns: list[str] = ["symbol", "close"]) -> pd.DataFrame:
+
     df = data.copy()
     validate_data(df)
-    df = sort_data(df)
+    df = sort_data(df,sorted_columns)
     df = add_log_return(df)
-    df = add_px_log_return_mean(df,(5,10,15))
-    df = add_px_log_return_volatility(df,(5,10,15))
+    
+    for window in windows:
+        df = add_px_log_return_mean(df,window)
+        df = add_px_log_return_volatility(df,window)
 
     return df
 

@@ -7,7 +7,6 @@ from investment_system.ingestion.market_data import fetch_stooq_universe, save_p
 def main() -> None:
     cfg = load_config(Path("configs/base.yaml"))
     df = fetch_stooq_universe(cfg)
-
     out_path = RAW_DIR / "prices.parquet"
     save_prices(df, out_path)
 

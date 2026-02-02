@@ -95,5 +95,10 @@ def save_prices(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False)
 
+def load_prices(path: Path) -> pd.DataFrame:
+    """Load prices from parquet to DataFrame"""
+    df = pd.read_parquet(path)
+    validate_prices(df)
+    return df
 
 
