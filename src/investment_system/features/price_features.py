@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import pathlib as Path
+from pathlib import Path
 def sort_data(df: pd.DataFrame,sorted_columns: list[str] = ["symbol", "date"]) -> pd.DataFrame:
     return df.sort_values(sorted_columns).reset_index(drop=True)
 
@@ -67,7 +67,7 @@ def validate_data(df: pd.DataFrame) -> None:
     if (df["close"] <= 0).any():
         raise ValueError("Column 'close' must contain only positive values")
 
-def add_price_features(data: pd.DataFrame, windows: tuple[int,...],sorted_columns: list[str] = ["symbol", "close"]) -> pd.DataFrame:
+def add_price_features(data: pd.DataFrame, windows: tuple[int,...],sorted_columns: list[str] = ["symbol", "date"]) -> pd.DataFrame:
 
     df = data.copy()
     validate_data(df)
