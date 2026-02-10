@@ -6,6 +6,6 @@ data:
   source: "stooq"
 
 universe:
-  us: ["INTC","PYPL"  ]
+  us: ["NVDA","AAPL", "TSLA", "GOOG"  ]
   pl: [ "PKO", "PEO", "CDR", "KGH"]
   
