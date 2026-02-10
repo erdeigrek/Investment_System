@@ -24,7 +24,7 @@ def add_signal(df: pd.DataFrame)-> pd.DataFrame:
         raise KeyError(f"Missing columns: {missing}")
     
     cond = (
-        (df["px_log_return_mean_15"] > 0.01) &
+        (df["px_log_return_mean_15"] > 0) &
         (df["px_log_return_mean_5"] > 0) &
         (df["px_log_return_volatility_15"]  < 2* df["px_log_return_mean_15"].abs())
     )
@@ -33,7 +33,7 @@ def add_signal(df: pd.DataFrame)-> pd.DataFrame:
     return df
 
 def add_exec_return(df: pd.DataFrame) -> pd.DataFrame:
-    df["exec_return"] = np.log(df["close"]/df["open"])
+    df["exec_return"] = np.log(df["close"]/df["close"].shift(1))
     return df
 
 
@@ -49,7 +49,6 @@ def add_n_active(df: pd.DataFrame) -> pd.DataFrame:
     df["n_active"] = df.groupby("date")["position"].transform("sum")
     return df
 
-# Weight of every operation
 def add_weight(df: pd.DataFrame) -> pd.DataFrame:
 
     df["weight"] = np.where(df["n_active"] > 0, df["position"] / df["n_active"], 0)
@@ -96,7 +95,26 @@ def add_drawdown(df:pd.DataFrame) -> pd.DataFrame:
     df["drawdown"] = df["equity"]/df["peak"] - 1
     return df
 
+def add_expanding_stats(df:pd.DataFrame) -> pd.DataFrame:
+    df["expanding_mean"] = df["portfolio_log_return"].expanding().mean().reset_index( drop=True)
+    df["expanding_std"]  = df["portfolio_log_return"].expanding().std().reset_index( drop=True)
+    mask = (df["expanding_std"] > 0)
+    df["Sharpe"] = np.where(mask, (df["expanding_mean"] / df["expanding_std"])*np.sqrt(252),np.nan)
+    return df
 
+def final_metrcis(df:pd.DataFrame) -> dict:
+    score = {}
+    score["mean_daily"] = df["portfolio_log_return"].mean(ddof=0)
+    score["std_daily"]  = df["portfolio_log_return"].std(ddof=0)
+    if score["std_daily"] != np.nan and score["std_daily"] > 0:
+        score["Sharpe"] = (score["mean_daily"]/score["std_daily"])*np.sqrt(252)
+    else:
+        score["Sharpe"] = np.nan
+    score["max_drawdown_abs"] = df["drawdown"].abs().max()
+    score["avg_n_actives"] = df["n_active"].median()
+    score["trading_days"] = (df["n_active"]>0).sum()
+    score["n_days"] = len(df)
+    return score
 # Baseline Pipeline
 def run_baseline_backtest(data: pd.DataFrame, initial_equity) -> tuple[pd.DataFrame, pd.DataFrame]:
     """expects df with price features"""
@@ -115,6 +133,7 @@ def run_baseline_backtest(data: pd.DataFrame, initial_equity) -> tuple[pd.DataFr
     df_portfolio = create_portfolio(df)
     df_portfolio = add_portfolio_equity(df_portfolio, initial_equity)
     df_portfolio = add_drawdown(df_portfolio)
+    df_portfolio = add_expanding_stats(df_portfolio)
 
     return df, df_portfolio
 

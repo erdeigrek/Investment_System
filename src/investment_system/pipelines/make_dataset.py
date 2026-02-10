@@ -22,7 +22,3 @@ def save_dataset(df: pd.DataFrame, path: Path, horizon: int) -> None:
     path.mkdir(parents=True, exist_ok=True)
     df.to_parquet(full_path, index = False)
 
-
-df = make_dataset_from_parquet("/home/erde/Investment_System/data/raw/prices.parquet",[2,5,15],1)
-df[:100].to_excel("/home/erde/Investment_System/data/raw/test.xlsx")
-print(df.columns)

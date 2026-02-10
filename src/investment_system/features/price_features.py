@@ -10,10 +10,10 @@ def log_return(close: pd.Series) -> pd.Series:
 
 def add_log_return(df: pd.DataFrame) -> pd.DataFrame:
 
-    df2 = df.copy()
-    df2["log_return"] = (
-    df2.groupby("symbol")["close"].transform(log_return))
-    return df2
+    
+    df["log_return"] = (
+    df.groupby("symbol")["close"].transform(log_return))
+    return df
 
 def px_log_return_mean(log_ret: pd.Series,window: int,min_periods: int |  None = None) -> pd.Series:
     """
@@ -27,10 +27,10 @@ def px_log_return_mean(log_ret: pd.Series,window: int,min_periods: int |  None =
     
 def add_px_log_return_mean(df: pd.DataFrame, window: int) -> pd.DataFrame:
     """Create column with values of Rolling mean of log returns"""
-    df2 = df.copy()
-    df2["px_log_return_mean_"+ str(window)] = (
-    df2.groupby("symbol")["log_return"].transform(lambda s:px_log_return_mean(s, window)))
-    return df2
+    
+    df["px_log_return_mean_"+ str(window)] = (
+    df.groupby("symbol")["log_return"].transform(lambda s:px_log_return_mean(s, window)))
+    return df
 
 def px_log_return_volatility(log_ret: pd.Series,window: int,min_periods: int |  None = None) -> pd.Series:
     """
@@ -43,10 +43,10 @@ def px_log_return_volatility(log_ret: pd.Series,window: int,min_periods: int |  
 
     
 def add_px_log_return_volatility(df: pd.DataFrame, window: int) -> pd.DataFrame:
-    df2 = df.copy()
-    df2["px_log_return_volatility_"+ str(window)] = (
-    df2.groupby("symbol")["log_return"].transform(lambda s:px_log_return_volatility(s, window)))
-    return df2
+    
+    df["px_log_return_volatility_"+ str(window)] = (
+    df.groupby("symbol")["log_return"].transform(lambda s:px_log_return_volatility(s, window)))
+    return df
 
 
 def validate_data(df: pd.DataFrame) -> None:
@@ -66,6 +66,9 @@ def validate_data(df: pd.DataFrame) -> None:
         raise TypeError("Column Close must be a numeric")
     if (df["close"] <= 0).any():
         raise ValueError("Column 'close' must contain only positive values")
+    if (df["open"] <= 0).any():
+        raise ValueError("Column 'open' must contain only positive values")
+
 
 def add_price_features(data: pd.DataFrame, windows: tuple[int,...],sorted_columns: list[str] = ["symbol", "date"]) -> pd.DataFrame:
 

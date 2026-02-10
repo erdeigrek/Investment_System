@@ -1,11 +1,11 @@
 dates:
   start: "2020-01-01"
-  end: "2025-12-31"
+  end: "2023-12-31"
 
 data:
   source: "stooq"
 
 universe:
-  us: ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA"  ]
+  us: ["INTC","PYPL"  ]
   pl: [ "PKO", "PEO", "CDR", "KGH"]
   
