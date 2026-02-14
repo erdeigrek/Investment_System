@@ -18,11 +18,7 @@ def add_signal(df: pd.DataFrame)-> pd.DataFrame:
     for window in rolling_windows:
         required_cols.add(f"px_log_return_mean_{window}")
         required_cols.add(f"px_log_return_volatility_{window}")
-    missing = required_cols - set(df.columns)
 
-    if missing:
-        raise KeyError(f"Missing columns: {missing}")
-    
     cond = (
         (df["px_log_return_mean_15"] > 0) &
         (df["px_log_return_mean_5"] > 0) &
@@ -115,6 +111,7 @@ def final_metrcis(df:pd.DataFrame) -> dict:
     score["trading_days"] = (df["n_active"]>0).sum()
     score["n_days"] = len(df)
     return score
+
 # Baseline Pipeline
 def run_baseline_backtest(data: pd.DataFrame, initial_equity) -> tuple[pd.DataFrame, pd.DataFrame]:
     """expects df with price features"""

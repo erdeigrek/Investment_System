@@ -1,38 +1,140 @@
-# Investment_System
+# Investment Decision Support System
 
-## Target
-Targetem modelu jest przyszły logarytmiczny zwrot ceny zamknięcia akcji, liczony jako:
+System wspomagania decyzji inwestycyjnych oparty na danych rynkowych i metodach Machine Learning.
 
-log(close(T+1) / close(T))
+Projekt realizowany w ramach pracy dyplomowej.
 
-## Horyzont predykcji
-Horyzont predykcji wynosi 1 dzień (next-day return).
+---
 
-Decyzja inwestycyjna podejmowana jest po zamknięciu sesji dnia T (lub równoważnie: rano dnia T+1 przed otwarciem rynku), na podstawie danych historycznych dostępnych do tego momentu.  
-Predykcja dotyczy zwrotu z dnia T do dnia T+1.
+## 🎯 Cel projektu
 
-Realizacja transakcji następuje w dniu T+1.  
-W bazowej wersji systemu przyjmuje się uproszczone założenie wejścia w pozycję po cenie Open(T+1) oraz wyjścia po cenie Close(T+1), bez uwzględnienia kosztów transakcyjnych.
+Celem projektu jest:
 
-## Jednostka obserwacji
-Jednostką obserwacji jest pojedyncza para (symbol, dzień handlowy), odpowiadająca jednemu instrumentowi finansowemu oraz jednemu dniowi obserwacyjnemu w zbiorze danych.
+- zbudowanie kompletnego pipeline’u danych rynkowych,
+- implementacja benchmarkowej strategii (baseline),
+- zaprojektowanie systemu umożliwiającego porównanie modeli ML z realistycznym punktem odniesienia,
+- analiza stabilności i ryzyka strategii.
 
-Każda obserwacja jest indeksowana czasowo dniem T i wykorzystywana do predykcji zwrotu z dnia T do dnia T+1.
+---
 
-## Feature engineering i spójność czasowa
-Cechy oparte na historii cen (np. logarytmiczne stopy zwrotu, średnie kroczące, zmienność) są konstruowane w sposób zapewniający brak wykorzystania informacji z przyszłości (data leakage).
+## 🏗 Aktualny stan projektu  
+### Milestone 1 – Baseline Complete ✅
 
-W szczególności cechy kroczące są obliczane wyłącznie na podstawie danych historycznych sprzed dnia T (poprzez jawne przesunięcie czasowe), tak aby żadna informacja z dnia T+1 ani późniejsza nie była wykorzystywana w procesie predykcji.
+### 1️⃣ Pipeline danych
+- ingestion danych rynkowych,
+- walidacja i sortowanie czasowe,
+- feature engineering:
+  - log returns,
+  - rolling mean,
+  - rolling volatility,
+- brak look-ahead bias (jawne przesunięcia w rollingach).
 
-Transformacje wymagające dopasowania parametrów (np. skalowanie cech) są dopasowywane wyłącznie na zbiorze treningowym.
+---
 
-## Schemat splitu czasowego
-W czasie treningu model nie ma dostępu do danych z okresu testowego.
+### 2️⃣ Dataset Builder
+- konstrukcja cech + targetu,
+- target: przyszły log-return (horyzont predykcji),
+- usuwanie obserwacji bez targetu,
+- jednoznaczne miejsce powstawania targetu.
 
-### TRAIN
-- zakres dat: 2016-01-01 → 2020-12-31  
-- przeznaczenie: uczenie modelu oraz dopasowanie transformacji danych (np. scalerów)
+---
 
-### TEST
-- zakres dat: 2021-01-01 → 2023-12-31  
-- przeznaczenie: wyłącznie ewaluacja jakości predykcji oraz strategii inwestycyjnej
+### 3️⃣ Baseline Backtest
+- rule-based signal,
+- `position = shift(signal)`,
+- execution: intraday (`log(close/open)`),
+- równoważony portfel (`1 / n_active`),
+- cash day przy braku aktywnych pozycji,
+- agregacja portfela do poziomu dziennego,
+- equity curve (`exp(cumsum(log_returns))`),
+- drawdown,
+- metryki końcowe:
+  - `mean_daily`
+  - `std_daily`
+  - `Sharpe` (annualized)
+  - `max_drawdown_abs`
+  - `median_n_active`
+  - `n_days`
+
+---
+
+### 4️⃣ Testy inwariantów
+- poprawne przesunięcie sygnału (brak leakage),
+- brak mieszania tickerów,
+- suma wag = 1 lub 0,
+- cash day → brak zwrotu,
+- poprawność drawdown.
+
+---
+
+## 🧠 Architektura systemu
+**raw prices**
+**↓**
+**price_features**
+**↓**
+**make_dataset (features + target)**
+**↓**
+**baseline strategy**
+**↓**
+**portfolio aggregation**
+**↓**
+**metrics**
+
+
+### Moduły
+
+- `market_data.py` – ingestion i zapis danych
+- `price_features.py` – budowa cech cenowych (past-only)
+- `make_log_return_target.py` – konstrukcja targetu
+- `make_dataset.py` – integracja features + target
+- `baseline.py` – benchmarkowa strategia portfelowa
+
+---
+
+## ⏱ Konwencja czasu
+
+- Wiersz danych T reprezentuje stan po close(T)
+- Decyzja podejmowana po close(T) / rano T+1
+- Sygnał liczony w T-1 steruje pozycją w T
+- Execution: open(T) → close(T)
+- Brak look-ahead bias
+
+---
+
+## 📊 Metodologia
+
+Strategia benchmarkowa stanowi punkt odniesienia dla przyszłych modeli ML.
+
+Metryki liczone są na poziomie portfela dziennego.
+
+Sharpe ratio annualizowany jest przez √252 (dni handlowe).
+
+---
+
+## 🚧 Następne kroki – Milestone 2
+
+- implementacja kosztów transakcyjnych,
+- obliczenie turnover,
+- realistyczne ograniczenia portfela,
+- diagnostyka stabilności strategii,
+- przygotowanie pod walk-forward validation i ML.
+
+---
+
+## ⚠️ Ryzyka projektowe
+
+- data leakage,
+- regime shift,
+- overfitting przy modelach ML,
+- nierealistyczne założenia kosztów,
+- nadmierne dopasowanie parametrów baseline.
+
+---
+
+## 📚 Literatura (do uzupełnienia w kolejnych etapach)
+
+Planowane obszary:
+- metodologia backtestingu,
+- modelowanie kosztów transakcyjnych,
+- ocena strategii (Sharpe, drawdown, tail risk),
+- walidacja czasowa w ML dla danych finansowych.
