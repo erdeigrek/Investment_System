@@ -6,7 +6,7 @@ def add_signal(df: pd.DataFrame)-> pd.DataFrame:
     Generate long-only trading signal.
 
     Signal = 1 when:
-    - medium-term momentum (15d) is strong (> 1%)
+    - medium-term momentum (15d) is strong (> 0%)
     - short-term momentum (5d) is positive
     - volatility is controlled relative to trend strength
 

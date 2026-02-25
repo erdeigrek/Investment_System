@@ -5,11 +5,7 @@ from investment_system.features.price_features import sort_data
 def make_log_return_target(df: pd.DataFrame, symbol_col: str = "symbol", date_col: str = "date", close_col: str = "close", horizon: int = 1) -> pd.DataFrame:
     
     out = df.copy()
-    required = {symbol_col, date_col, close_col}
-    missing = required - set(out.columns)
-    if missing:
-        raise KeyError(f"Missing columns: {missing}")
-    
+
     out = sort_data(out,[symbol_col,date_col])
     mask = out.duplicated(subset=[symbol_col, date_col])
 
