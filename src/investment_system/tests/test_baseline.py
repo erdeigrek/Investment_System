@@ -2,22 +2,22 @@ import pandas as pd
 import numpy as np
 import investment_system.strategies.baseline as bs
 from investment_system.pipelines.make_dataset import make_dataset
-dates = pd.date_range(start="2025-01-01", periods=50)
-
-
-dates = pd.date_range(start="2025-01-01", periods=25)
-
-
+periods = 730
+dates = pd.date_range(start="2022-01-01", periods=periods)
+"""
+source /home/erde/Investment_System/.venv/bin/activate
+python -m pytest -q -s
+"""
 df = pd.DataFrame({
-    "symbol": ["AAPL"] * 25 + ["NVDA"] * 25,
+    "symbol": ["AAPL"] * periods + ["NVDA"] * periods,
     "date": list(dates) + list(dates),
     "open": np.concatenate([
-        np.round(np.linspace(150, 170, 25) + np.random.normal(0, 1, 25), 2), 
-        np.round(np.linspace(400, 500, 25) + np.random.normal(0, 2, 25), 2)  
+        np.round(np.linspace(150, 300, periods) + np.random.normal(0, 1, periods), 2), 
+        np.round(np.linspace(400, 600, periods) + np.random.normal(0, 2, periods), 2)  
     ]),
     "close": np.concatenate([
-        np.round(np.linspace(151, 171, 25) + np.random.normal(0, 1, 25), 2),
-        np.round(np.linspace(402, 505, 25) + np.random.normal(0, 2, 25), 2) 
+        np.round(np.linspace(151, 371, periods) + np.random.normal(0, 1, periods), 2),
+        np.round(np.linspace(402, 605, periods) + np.random.normal(0, 2, periods), 2) 
     ])
 })
 
@@ -25,6 +25,7 @@ df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
 
 df = make_dataset(df,[2,5,15],1)
 df, df_portfolio = bs.run_baseline_backtest(df,1)
+
 
 def test_weight_value():
     expected = pd.Series(np.where(df["n_active"] > 0, df["position"] / df["n_active"], 0))

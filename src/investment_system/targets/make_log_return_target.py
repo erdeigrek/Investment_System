@@ -6,7 +6,7 @@ def make_log_return_target(df: pd.DataFrame, symbol_col: str = "symbol", date_co
     
     out = df.copy()
 
-    out = sort_data(out,[symbol_col,date_col])
+    out = sort_data(out)
     mask = out.duplicated(subset=[symbol_col, date_col])
 
     if mask.any():
