@@ -1,11 +1,66 @@
 dates:
   start: "2018-01-01"
-  end: "2022-12-31"
+  end: "2024-12-31"
 
 data:
   source: "stooq"
 
 universe:
-  us: ["NVDA", "GOOG", "AMD", "TSLA", "NOK"]
-  pl: ["PKP","WIG"]
-  
+
+  us:
+    - AAPL
+    - MSFT
+    - NVDA
+    - GOOG
+    - AMZN
+    - META
+    - TSLA
+    - AMD
+    - INTC
+    - QCOM
+    - AVGO
+    - TXN
+    - MU
+    - ORCL
+    - IBM
+    - CSCO
+    - ADBE
+    - CRM
+    - NFLX
+    - PYPL
+    - V
+    - MA
+    - JPM
+    - BAC
+    - WFC
+    - GS
+    - MS
+    - UNH
+    - JNJ
+    - PFE
+    - MRK
+    - ABBV
+    - TMO
+    - COST
+    - WMT
+    - HD
+    - LOW
+    - MCD
+    - SBUX
+    - NKE
+
+  eu:
+    - SAP
+    - ASML
+    - LVMH
+    - NESN
+    - NOVN
+    - ROG
+    - OR
+    - MC
+    - SAN
+    - BNP
+
+  pl:
+    - PKP
+    - WIG

@@ -23,7 +23,10 @@ def make_log_return_target(df: pd.DataFrame, symbol_col: str = "symbol", date_co
     target_col = f"target_log_ret_{horizon}d"
     if target_col in out.columns:
         raise ValueError(f"Column {target_col} exists. You can't overwrite this column.")
-    out[target_col] = np.log(future_price/out[close_col])
+    if horizon == 1:
+        out[target_col] = np.log(future_price/out["open"])
+    else:
+        out[target_col] = np.log(future_price/out[close_col])
 
 
     return out

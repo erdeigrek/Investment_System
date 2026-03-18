@@ -28,7 +28,7 @@ def validate_config(cfg: dict) -> None:
     required_subsections = {
         "dates": ["start", "end"],
         "data": ["source"],
-        "universe": ["us","pl"]
+        "universe": ["us","eu","pl"]
     }
     for section in required_sections:
         if section not in cfg:

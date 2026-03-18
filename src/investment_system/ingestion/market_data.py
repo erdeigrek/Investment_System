@@ -6,6 +6,8 @@ def stooq_symbol(symbol: str, market: str) -> str:
     symbol = symbol.lower()
     if market == "us":
         return f"{symbol}.us"
+    if market == "eu":
+        return f"{symbol}.eu"
     if market == "pl":
         return f"{symbol}"
     raise ValueError(f"Unknown market: {market}")

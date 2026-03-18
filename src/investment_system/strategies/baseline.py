@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def add_signal(df: pd.DataFrame, rolling_windows:tuple[int,...])-> pd.DataFrame:
+def add_signal(df: pd.DataFrame,top_k: int)-> pd.DataFrame:
     """
     Generate long-only trading signal.
 
@@ -12,21 +12,26 @@ def add_signal(df: pd.DataFrame, rolling_windows:tuple[int,...])-> pd.DataFrame:
 
     Otherwise signal = 0.
     """
-
-    required_cols = set()
-    rolling_windows = (5,15)
+    if "signal" in df.columns and df["signal"].notna().any():
+        return df
     
-    for window in rolling_windows:
-        required_cols.add(f"px_log_return_mean_{window}")
-        required_cols.add(f"px_log_return_volatility_{window}")
     ratio = df["px_log_return_mean_15"] / (df["px_log_return_volatility_15"] + 1e-12)
     thr = ratio.quantile(0.70)
+    df["score"] = (
+        df["px_log_return_mean_15"] *
+        df["px_log_return_mean_5"] /
+        (df["px_log_return_volatility_15"] + 1e-12)
+    )
+    df["rank"] = df.groupby("date")["score"].rank(ascending=False)
     cond = (
         (df["px_log_return_mean_15"] > 0) &
         (df["px_log_return_mean_5"] > 0) &
-        (ratio > thr)
+        (ratio > thr) &
+        (df["rank"] <=top_k)
     )
+    
     df["signal"] = np.where(cond, 1, 0)
+
 
     return df
 
@@ -60,7 +65,7 @@ def add_gross_log_return(df: pd.DataFrame,fee_bps: int) -> pd.DataFrame:
     df["sum_of_daily_weights"] =  df.groupby("date")["weight"].transform("sum")
     if df["sum_of_daily_weights"].isna().any():
         raise ValueError("Sum of daily weights cannot be NaN")
-    df["turnover"] = 2*df["sum_of_daily_weights"]
+    df["turnover"] = np.where(df["n_active"] > 0, 2.0, 0.0)
         
     fee =  fee_bps/10_000
     df["cost"] = df["turnover"]*fee
@@ -149,7 +154,7 @@ def add_netto_values(df:pd.DataFrame, initial_equity) -> pd.DataFrame:
     return df
 
 # Baseline Pipeline
-def run_baseline_backtest(data: pd.DataFrame, initial_equity: int, rolling_windows:tuple[int,...], fee_bps: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+def run_baseline_backtest(data: pd.DataFrame, initial_equity: int, fee_bps: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     """expects df with price features"""
     df =  data.copy()
     required_cols = {"symbol", "date", "close","open", "px_log_return_mean_15", "px_log_return_mean_5", "px_log_return_volatility_15","px_log_return_volatility_5"}
@@ -157,7 +162,7 @@ def run_baseline_backtest(data: pd.DataFrame, initial_equity: int, rolling_windo
     if missing:
         raise KeyError(f"Missing columns: {missing}")
     df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
-    df = add_signal(df,rolling_windows)
+    df = add_signal(df,3)
     df = add_exec_return(df)
     df = add_position(df)
     df = add_n_active(df)
