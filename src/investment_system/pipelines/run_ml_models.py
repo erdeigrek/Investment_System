@@ -6,8 +6,10 @@ from datetime import datetime
 from investment_system.strategies.baseline import run_baseline_backtest,final_metrcis
 import pandas as pd
 import numpy as np
-#main()
 horizon = 1
+top_k = 3
+fee = 5
+#main()
 df = make_dataset_from_parquet("/home/erde/Investment_System/data/raw/prices.parquet",[1,5,15], horizon = horizon)
 
 
@@ -56,12 +58,11 @@ for name, Model in models.items():
         model.fit(X_train,y_train)
         score = model.predict(X_test)
 
-        top_k = 3
         df_test["score"] = score
         df_test["rank"] = df_test.groupby("date")["score"].rank(ascending=False)
         mask = ((df_test["rank"] <= top_k))
         df_test["signal"] = np.where(mask,1,0)
-        df_data, portfolio = run_baseline_backtest(df_test,1,5)
+        df_data, portfolio = run_baseline_backtest(df_test,1,fee)
         final_metrics.append(portfolio)
         metrics = final_metrcis(portfolio)
         print(f'{df_data.iloc[0]["date"]} -- {df_data.iloc[-1]["date"]}')
