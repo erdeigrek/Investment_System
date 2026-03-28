@@ -18,15 +18,12 @@ def make_log_return_target(df: pd.DataFrame, symbol_col: str = "symbol", date_co
     if horizon <= 0:
         raise ValueError("Horizon value must be greater than 0")
     
+    entry_price = out.groupby(symbol_col)["open"].shift(-1)
     future_price = out.groupby(symbol_col)[close_col].shift(-horizon)
     
     target_col = f"target_log_ret_{horizon}d"
     if target_col in out.columns:
         raise ValueError(f"Column {target_col} exists. You can't overwrite this column.")
-    if horizon == 1:
-        out[target_col] = np.log(future_price/out["open"])
-    else:
-        out[target_col] = np.log(future_price/out[close_col])
-
+    out[target_col] = np.log(future_price/entry_price)
 
     return out

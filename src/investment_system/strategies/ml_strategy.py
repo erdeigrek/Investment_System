@@ -8,9 +8,14 @@ def rebalance_day(df: pd.DataFrame, holding_period: int) -> pd.DataFrame:
     df["rebalance_day"] = np.where(mask, True, False)
     return df
 
-def add_signal_decision(df: pd.DataFrame, top_k: int) -> pd.DataFrame:
+
+def ml_rank(df: pd.DataFrame) -> pd.DataFrame:
     df["rank"] = df.groupby("date")["score"].rank(ascending=False)
 
+    return df
+
+
+def signal_decision(df: pd.DataFrame, top_k: int) -> pd.DataFrame:
     mask = (
         (df["rebalance_day"] == True)
             )
@@ -19,47 +24,46 @@ def add_signal_decision(df: pd.DataFrame, top_k: int) -> pd.DataFrame:
         (df["rank"] <= top_k ) &
         (df["score"] > 0)
         )
-    mask3 = ()
-    df["signal_decision"] = np.where(mask, np.where(mask2,1 ,0), np.nan)
+    
+    df["signal_decision"] = np.where(mask, np.where(mask2,1 ,0), np.nan) 
+
+    return df
+
+def add_signal_hold(df: pd.DataFrame) -> pd.DataFrame:
     df["signal_hold"] = df.groupby("symbol")["signal_decision"].ffill().fillna(0)
+    return df
+
+
+def add_position(df: pd.DataFrame) -> pd.DataFrame:
     df["position"] = df.groupby("symbol")["signal_hold"].shift(1).fillna(0)
     return df
 
-df = pd.DataFrame({
-    "date": [
-        "2024-01-01", "2024-01-01",
-        "2024-01-02", "2024-01-02",
-        "2024-01-03", "2024-01-03",
-        "2024-01-04", "2024-01-04",
-        "2024-01-05", "2024-01-05",
-        "2024-01-06", "2024-01-06",
-    ],
-    "symbol": [
-        "A", "B",
-        "A", "B",
-        "A", "B",
-        "A", "B",
-        "A", "B",
-        "A", "B",
-    ],
-    "score": [
-        0.90, 0.10,   # d1 -> A wygrywa
-        0.80, 0.20,   # d2
-        0.70, 0.30,   # d3
-        0.10, 0.90,   # d4 -> B wygrywa
-        0.20, 0.80,   # d5
-        0.30, 0.70,   # d6
-    ]
-})
+def add_weight_hold(df: pd.DataFrame, top_k: int) -> pd.DataFrame:
 
-df["date"] = pd.to_datetime(df["date"])
-df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
-holding_period = 3
-top_k = 1
-print(df[["date", "symbol", "score"]])
-df = rebalance_day(df,holding_period)
-df = add_signal_decision(df, top_k)
+    mask = (
+        (df["rebalance_day"])&
+        (df["rank"] <= top_k)&
+        (df["score"] > 0)
+    )
+    mask1 = ((df["rank"] <= top_k)&
+        (df)["score"] > 0)
+ 
+    df["target_weight"] = np.where(df["rebalance_day"],np.where(mask1,1,0),np.nan)
+    df.loc[mask,"target_weight"] = df["score"]
+    sum_score = df.groupby("date")["target_weight"].transform("sum")
+    df.loc[mask, "target_weight"] = df.loc[mask, "target_weight"]/sum_score[mask]
+    df["weight_hold"] = df["target_weight"]
+    df["weight_hold"] = df.groupby("symbol")["target_weight"].ffill().fillna(0)
+    df["weight"] = df.groupby("symbol")["weight_hold"].shift().fillna(0)
 
-print(df[["date", "symbol", "rebalance_day"]])
-print(df[["date", "symbol", "rank", "signal_decision"]].sort_values(["symbol","date"]))
-print(df[["date", "symbol", "signal_hold","position"]].sort_values(["symbol","date"]))
+ 
+    return df
+
+def add_turnover(df: pd.DataFrame) -> pd.DataFrame:
+    df["prev_weight"] = df.groupby("symbol")["weight"].shift().fillna(0)
+    df["daily_weight_diff"] = np.abs(df["weight"] - df["prev_weight"])
+    df["turnover"] = df.groupby("date")["daily_weight_diff"].transform("sum")
+
+    return df
+
+ 

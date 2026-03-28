@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run ML Models",
+      "type": "python",
+      "request": "launch",
+      "module": "investment_system.pipelines.run_ml_models",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal"
+    }
+  ]
+}

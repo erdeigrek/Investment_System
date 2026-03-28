@@ -14,7 +14,7 @@ df = make_dataset_from_parquet("/home/erde/Investment_System/data/raw/prices.par
 
 
 
-with open('/home/erde/Investment_System/configs/folds.yaml', 'r') as f:
+with open('/home/erde/Investment_System/configs/folds.yaml', 'r') as f: 
     data = yaml.load(f, Loader=yaml.SafeLoader)
 
 models = {
@@ -23,7 +23,6 @@ models = {
 }
 
 final_metrics = []
-
 for name, Model in models.items():
     print(f'======={name}=======')
     for fold in data["folds"]:
