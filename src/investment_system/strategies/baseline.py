@@ -12,7 +12,7 @@ def add_baseline_score(df: pd.DataFrame)-> pd.DataFrame:
 
     return df
 
-def add_baseline_signal(df: pd.DataFrame,top_k: int)-> pd.DataFrame:
+def add_baseline_signal_hold(df: pd.DataFrame,top_k: int)-> pd.DataFrame:
     ratio = df["px_log_return_mean_15"] / (df["px_log_return_volatility_15"] + 1e-12)
     thr = ratio.quantile(0.70)
     cond = (
@@ -27,26 +27,21 @@ def add_baseline_signal(df: pd.DataFrame,top_k: int)-> pd.DataFrame:
 
     return df
 
-def add_exec_return(df: pd.DataFrame) -> pd.DataFrame:
-    df["exec_return"] = np.log(df["close"]/df["open"])
-    return df
 
-
-def add_position(df: pd.DataFrame) -> pd.DataFrame:
-    """expects df sorted by symbol and date"""
-    
+def add_baseline_position(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.sort_values(["symbol", "date"])
     df["position"] = df.groupby("symbol")["signal_hold"].shift(1).fillna(0)
     return df
 
 
-def add_n_active(df: pd.DataFrame) -> pd.DataFrame:
+def add_equal_weight_from_position(df: pd.DataFrame) -> pd.DataFrame:
 
-    df["n_active"] = df.groupby("date")["position"].transform("sum")
+    df["weight"] = np.where(df["position"] > 0, 1/df.groupby("date")["position"].transform("sum"), 0)
     return df
 
-def add_weight(df: pd.DataFrame) -> pd.DataFrame:
-
-    df["weight"] = np.where(df["n_active"] > 0, df["position"] / df["n_active"], 0)
+def run_baseline_strategy(df: pd.DataFrame, top_k) -> pd.DataFrame:
+    df = add_baseline_score(df)
+    df = add_baseline_signal_hold(df,top_k)
+    df = add_baseline_position(df)
+    df = add_equal_weight_from_position(df)
     return df
-
-
