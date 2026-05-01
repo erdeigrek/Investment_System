@@ -6,11 +6,23 @@ __pycache__/
 # Virtual env
 .venv/
 
-# Data
-data/
+# Caches / testy
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
-# Teoria
-teoria/
+# VS Code
+.vscode/
 
+# Env
+.env
 
+# Build / package
 *.egg-info/
+dist/
+build/
+
+# Projekt
+data/
+results/
+teoria/

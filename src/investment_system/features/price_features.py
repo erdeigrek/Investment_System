@@ -1,57 +1,77 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
-def sort_data(df: pd.DataFrame,sorted_columns: list[str] = ["symbol", "date"]) -> pd.DataFrame:
+
+
+def sort_data(
+    df: pd.DataFrame, sorted_columns: list[str] = ["symbol", "date"]
+) -> pd.DataFrame:
     return df.sort_values(sorted_columns).reset_index(drop=True)
 
+
 def log_return(close: pd.Series) -> pd.Series:
-    """Log Return - """
+    """Log Return -"""
     return np.log(close / close.shift(1))
+
 
 def add_log_return(df: pd.DataFrame) -> pd.DataFrame:
 
-    
-    df["log_return"] = (
-    df.groupby("symbol")["close"].transform(log_return))
+    df["log_return"] = df.groupby("symbol")["close"].transform(log_return)
     return df
 
-def px_log_return_mean(log_ret: pd.Series,window: int,min_periods: int |  None = None) -> pd.Series:
+
+def px_log_return_mean(
+    log_ret: pd.Series, window: int, min_periods: int | None = None
+) -> pd.Series:
     """
     Rolling mean of log returns based on past observations only.
     The feature is shifted by one period to avoid look-ahead bias.
     """
     if min_periods is None:
         min_periods = window
-    return log_ret.shift(1).rolling(window = window, min_periods= min_periods).mean()
+    return log_ret.shift(1).rolling(window=window, min_periods=min_periods).mean()
 
-    
+
 def add_px_log_return_mean(df: pd.DataFrame, window: int) -> pd.DataFrame:
     """Create column with values of Rolling mean of log returns"""
-    
-    df["px_log_return_mean_"+ str(window)] = (
-    df.groupby("symbol")["log_return"].transform(lambda s:px_log_return_mean(s, window)))
+
+    df["px_log_return_mean_" + str(window)] = df.groupby("symbol")[
+        "log_return"
+    ].transform(lambda s: px_log_return_mean(s, window))
     return df
 
-def px_log_return_volatility(log_ret: pd.Series,window: int,min_periods: int |  None = None) -> pd.Series:
+
+def px_log_return_volatility(
+    log_ret: pd.Series, window: int, min_periods: int | None = None
+) -> pd.Series:
     """
     Rolling volatility of log returns based on past observations only.
     The feature is shifted by one period to avoid look-ahead bias.
     """
     if min_periods is None:
         min_periods = window
-    return log_ret.shift(1).rolling(window = window, min_periods= min_periods).std(ddof=0)
+    return log_ret.shift(1).rolling(window=window, min_periods=min_periods).std(ddof=0)
 
-    
+
 def add_px_log_return_volatility(df: pd.DataFrame, window: int) -> pd.DataFrame:
-    
-    df["px_log_return_volatility_"+ str(window)] = (
-    df.groupby("symbol")["log_return"].transform(lambda s:px_log_return_volatility(s, window)))
+
+    df["px_log_return_volatility_" + str(window)] = df.groupby("symbol")[
+        "log_return"
+    ].transform(lambda s: px_log_return_volatility(s, window))
+    return df
+
+
+def add_px_log_return_ratio(df: pd.DataFrame, window: int) -> pd.DataFrame:
+    df["px_log_return_ratio_" + str(window)] = (
+        df["px_log_return_mean_" + str(window)]
+        / df["px_log_return_volatility_" + str(window)]
+    )
     return df
 
 
 def validate_data(df: pd.DataFrame) -> None:
 
-    required_cols = {"symbol", "date", "close","open"}
+    required_cols = {"symbol", "date", "close", "open"}
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"Missing columns: {missing}")
@@ -60,9 +80,9 @@ def validate_data(df: pd.DataFrame) -> None:
 
     if not pd.api.types.is_string_dtype(df["symbol"]):
         raise TypeError("Column symbol must be a string")
-    if not pd.api.types.is_numeric_dtype(df["open"]) :
+    if not pd.api.types.is_numeric_dtype(df["open"]):
         raise TypeError("Column Open must be a numeric")
-    if not pd.api.types.is_numeric_dtype(df["close"]) :
+    if not pd.api.types.is_numeric_dtype(df["close"]):
         raise TypeError("Column Close must be a numeric")
     if (df["close"] <= 0).any():
         raise ValueError("Column 'close' must contain only positive values")
@@ -70,16 +90,20 @@ def validate_data(df: pd.DataFrame) -> None:
         raise ValueError("Column 'open' must contain only positive values")
 
 
-def add_price_features(data: pd.DataFrame, windows: tuple[int,...],sorted_columns: list[str] = ["symbol", "date"]) -> pd.DataFrame:
+def add_price_features(
+    data: pd.DataFrame,
+    windows: tuple[int, ...],
+    sorted_columns: list[str] = ["symbol", "date"],
+) -> pd.DataFrame:
 
     df = data.copy()
     validate_data(df)
-    df = sort_data(df,sorted_columns)
+    df = sort_data(df, sorted_columns)
     df = add_log_return(df)
-    
+
     for window in windows:
-        df = add_px_log_return_mean(df,window)
-        df = add_px_log_return_volatility(df,window)
+        df = add_px_log_return_mean(df, window)
+        df = add_px_log_return_volatility(df, window)
+        df = add_px_log_return_ratio(df, window)
 
     return df
-

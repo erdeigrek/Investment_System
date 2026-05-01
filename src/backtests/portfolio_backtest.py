@@ -1,17 +1,16 @@
 import pandas as pd
 import numpy as np
 
-def add_exec_return(df: pd.DataFrame) -> pd.DataFrame:
-    df["exec_return"] = np.log(df["close"]/df["open"])
-    return df
 
+def add_exec_return(df: pd.DataFrame) -> pd.DataFrame:
+    df["exec_return"] = np.log(df["close"] / df["open"])
+    return df
 
 
 def add_n_active(df: pd.DataFrame) -> pd.DataFrame:
 
-    df["n_active"] = ((df["weight"] > 0).groupby(df["date"]).transform("sum"))
+    df["n_active"] = (df["weight"] > 0).groupby(df["date"]).transform("sum")
     return df
-
 
 
 def add_turnover(df: pd.DataFrame) -> pd.DataFrame:
@@ -22,30 +21,28 @@ def add_turnover(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-
-def add_cost(df:pd.DataFrame, fee_bps:int ) -> pd.DataFrame:
-    fee =  fee_bps/10_000
-    df["cost"] = df["turnover"]*fee
+def add_cost(df: pd.DataFrame, fee_bps: int) -> pd.DataFrame:
+    fee = fee_bps / 10_000
+    df["cost"] = df["turnover"] * fee
 
     return df
 
 
-
 def add_gross_log_return(df: pd.DataFrame) -> pd.DataFrame:
-    df["contribution"] = df["exec_return"]*df["weight"]
+    df["contribution"] = df["exec_return"] * df["weight"]
     df["gross_log_return"] = df.groupby("date")["contribution"].transform("sum")
 
     return df
 
 
-
 def create_portfolio(df: pd.DataFrame) -> pd.DataFrame:
 
-    df = df.drop_duplicates(subset=['date'], keep="first")
-    df_portfolio = df.loc[:,["date", "gross_log_return", "n_active", "cost", "turnover"]]
+    df = df.drop_duplicates(subset=["date"], keep="first")
+    df_portfolio = df.loc[
+        :, ["date", "gross_log_return", "n_active", "cost", "turnover"]
+    ]
 
     return df_portfolio.sort_values("date")
-
 
 
 def add_portfolio_equity(df: pd.DataFrame, initial_equity: float = 1.0) -> pd.DataFrame:
@@ -54,69 +51,175 @@ def add_portfolio_equity(df: pd.DataFrame, initial_equity: float = 1.0) -> pd.Da
         raise ValueError("initial_equity must be greater than 0.")
 
     df["cum_log"] = df["gross_log_return"].cumsum()
-    df["equity"] = initial_equity*np.exp(df["cum_log"])
+    df["equity"] = initial_equity * np.exp(df["cum_log"])
     return df
 
 
-
-def add_netto_values(df:pd.DataFrame, initial_equity: float = 1.0) -> pd.DataFrame:
+def add_netto_values(df: pd.DataFrame, initial_equity: float = 1.0) -> pd.DataFrame:
     if (df["cost"] > 1).any():
         raise ValueError("Cost cannot be greater than 1!")
-    df["net_log_return"] = df["gross_log_return"] + np.log(1-df["cost"])
+    df["net_log_return"] = df["gross_log_return"] + np.log(1 - df["cost"])
     df["net_cum_log"] = df["net_log_return"].cumsum()
-    df["net_equity"] = initial_equity*np.exp(df["net_cum_log"])
+    df["net_equity"] = initial_equity * np.exp(df["net_cum_log"])
 
     return df
 
 
-
-def add_drawdown(df:pd.DataFrame) -> pd.DataFrame:
+def add_drawdown(df: pd.DataFrame) -> pd.DataFrame:
     """expects df sorted by date ascending"""
 
     df["peak"] = df["equity"].cummax()
     df["net_peak"] = df["net_equity"].cummax()
 
-    df["drawdown"] = df["equity"]/df["peak"] - 1
-    df["net_drawdown"] = df["net_equity"]/df["net_peak"] - 1
+    df["drawdown"] = df["equity"] / df["peak"] - 1
+    df["net_drawdown"] = df["net_equity"] / df["net_peak"] - 1
 
     return df
 
 
-
-def add_expanding_stats(df:pd.DataFrame) -> pd.DataFrame:
+def add_expanding_stats(df: pd.DataFrame) -> pd.DataFrame:
     df["expanding_mean"] = df["gross_log_return"].expanding(min_periods=60).mean()
     df["net_expanding_mean"] = df["net_log_return"].expanding(min_periods=60).mean()
 
-    df["expanding_std"]  = df["gross_log_return"].expanding(min_periods=60).std(ddof = 0)
-    df["net_expanding_std"]  = df["net_log_return"].expanding(min_periods=60).std(ddof = 0)
+    df["expanding_std"] = df["gross_log_return"].expanding(min_periods=60).std(ddof=0)
+    df["net_expanding_std"] = df["net_log_return"].expanding(min_periods=60).std(ddof=0)
 
-    mask = (df["expanding_std"] > 0)
-    df["gross_sharpe"] = np.where(mask, (df["expanding_mean"] / df["expanding_std"])*np.sqrt(252),np.nan)
-    net_mask = (df["net_expanding_std"] > 0)
-    df["net_sharpe"] = np.where(net_mask, (df["net_expanding_mean"] / df["net_expanding_std"])*np.sqrt(252),np.nan)
+    mask = df["expanding_std"] > 0
+    df["gross_sharpe"] = np.where(
+        mask, (df["expanding_mean"] / df["expanding_std"]) * np.sqrt(252), np.nan
+    )
+    net_mask = df["net_expanding_std"] > 0
+    df["net_sharpe"] = np.where(
+        net_mask,
+        (df["net_expanding_mean"] / df["net_expanding_std"]) * np.sqrt(252),
+        np.nan,
+    )
 
     return df
 
 
+def add_info_coefficient(df: pd.DataFrame) -> dict:
+    if not {"date", "score", "target"}.issubset(df.columns):
+        raise KeyError("add_info_coefficient requires date, score and target columns.")
+
+    ic_score = (
+        df.groupby("date")[["score", "target"]]
+        .apply(lambda x: x["score"].corr(x["target"], method="spearman"))
+        .dropna()
+    )
+    corr_info = dict()
+    corr_info["IC_Mean"] = ic_score.mean()
+    corr_info["IC_Median"] = ic_score.median()
+    corr_info["IC_Std"] = ic_score.std(ddof=0)
+    corr_info["IC_N_Days"] = len(ic_score)
+    corr_info["Positive_IC_Rate"] = (
+        np.where(ic_score > 0, 1, 0).sum() / len(ic_score)
+        if len(ic_score) > 0
+        else np.nan
+    )
+
+    return corr_info
 
 
-def final_metrics(df:pd.DataFrame) -> dict:
+def features_coefficient(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+    values = []
+    for feature in features:
+        ic_score = (
+            df.groupby("date")[[feature, "target"]]
+            .apply(lambda x: x[feature].corr(x["target"], method="spearman"))
+            .dropna()
+        )
+
+        values.append(
+            [
+                feature,
+                ic_score.mean(),
+                ic_score.median(),
+                ic_score.std(ddof=0),
+                len(ic_score),
+                (
+                    np.where(ic_score > 0, 1, 0).sum() / len(ic_score)
+                    if len(ic_score) > 0
+                    else np.nan
+                ),
+            ]
+        )
+    df2 = pd.DataFrame(
+        values,
+        columns=(
+            "feature_name",
+            "IC_Mean",
+            "IC_Median",
+            "IC_Std",
+            "IC_N_Days",
+            "Positive_IC_Rate",
+        ),
+    )
+
+    return df2
+
+
+def add_top_buckets(df: pd.DataFrame, top_k: int) -> dict:
+    top_buckets = (
+        df.sort_values(["date", "score"], ascending=[True, False])
+        .groupby("date")
+        .head(top_k)
+    )
+    top_buckets_return = top_buckets.groupby("date")["target"].agg("mean")
+    bottom_buckets = (
+        df.sort_values(["date", "score"], ascending=[True, True])
+        .groupby("date")
+        .head(top_k)
+    )
+    bottom_buckets_return = bottom_buckets.groupby("date")["target"].agg("mean")
+    buckets = dict()
+    buckets["daily_top_buckets_return"] = top_buckets_return
+    buckets["daily_bottom_buckets_return"] = bottom_buckets_return
+    if all(top_buckets_return.index == bottom_buckets_return.index):
+        buckets["bucket_spread"] = top_buckets_return - bottom_buckets_return
+    else:
+        raise IndexError("Bottom buckets index is not the same as Top Buckets")
+    buckets["bucket_n_days"] = len(top_buckets_return)
+    buckets["mean_top_buckets_return"] = top_buckets_return.mean()
+    buckets["mean_bottom_buckets_return"] = bottom_buckets_return.mean()
+    buckets["mean_bucket_spread"] = (top_buckets_return - bottom_buckets_return).mean()
+    return buckets
+
+
+def final_metrics(df: pd.DataFrame) -> dict:
     score = {}
     score["mean_daily"] = df["gross_log_return"].mean()
-    score["std_daily"]  = df["gross_log_return"].std(ddof=0)
+    score["std_daily"] = df["gross_log_return"].std(ddof=0)
     if score["std_daily"] > 0:
-        score["gross_sharpe"] = (score["mean_daily"]/score["std_daily"])*np.sqrt(252)
+        score["gross_sharpe"] = (score["mean_daily"] / score["std_daily"]) * np.sqrt(
+            252
+        )
     else:
         score["gross_sharpe"] = np.nan
+    score["net_mean_daily"] = df["net_log_return"].mean()
+    score["net_std_daily"] = df["net_log_return"].std(ddof=0)
+    if score["net_std_daily"] > 0:
+        score["net_sharpe"] = (
+            score["net_mean_daily"] / score["net_std_daily"]
+        ) * np.sqrt(252)
+    else:
+        score["net_sharpe"] = np.nan
     score["max_drawdown_abs"] = df["drawdown"].abs().max()
-    score["trading_days"] = (df["turnover"]>0).sum()
+    score["max_net_drawdown_abs"] = df["net_drawdown"].abs().max()
+    score["trading_days"] = (df["turnover"] > 0).sum()
     score["n_days"] = len(df)
-    score["trade_rate"] = score["trading_days"]/len(df)
+    score["trade_rate"] = score["trading_days"] / len(df)
     score["final_equity"] = df.iloc[-1]["equity"]
     score["final_net_equity"] = df.iloc[-1]["net_equity"]
+    score["avg_turnover"] = df["turnover"].mean()
+    score["avg_active"] = df["n_active"].mean()
+
     return score
 
-def run_portfolio_backtest(df: pd.DataFrame, fee_bps: int)-> tuple[pd.DataFrame, pd.DataFrame]:
+
+def run_portfolio_backtest(
+    df: pd.DataFrame, fee_bps: int
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
     df = add_exec_return(df)
     df = add_n_active(df)
@@ -128,5 +231,6 @@ def run_portfolio_backtest(df: pd.DataFrame, fee_bps: int)-> tuple[pd.DataFrame,
     portfolio = add_netto_values(portfolio, 1.0)
     portfolio = add_drawdown(portfolio)
     portfolio = add_expanding_stats(portfolio)
-    
-    return  df, portfolio
+    metrics = final_metrics(portfolio)
+
+    return df, portfolio, metrics
