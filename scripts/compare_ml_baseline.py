@@ -11,10 +11,15 @@ Skrypt:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
 from datetime import datetime
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.utils import get_column_letter
+from openpyxl.formatting.rule import CellIsRule
+from openpyxl.styles import PatternFill, Font
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -33,7 +38,10 @@ from investment_system.strategies.baseline import (
     add_equal_weight_from_position,
 )
 from investment_system.strategies.ml_strategy import run_ml_strategy
-from investment_system.targets.make_log_return_target import make_log_return_target
+from investment_system.targets.make_log_return_target import (
+    add_target_excess,
+    make_log_return_target,
+)
 
 
 import numpy as np
@@ -44,29 +52,222 @@ from sklearn.linear_model import LinearRegression, Ridge
 
 
 HORIZON = 20
-TOP_K = 5
+TOP_K = 15
+TARGET_MODE = "absolute"  # albo "excess"
+FEATURE_SET_MODE = "momentum_plus_high"
 FEE_BPS = 0
 BASELINE_HOLDING_PERIOD = HORIZON
-ROLLING_WINDOWS = (10, 20, 30)
+ROLLING_WINDOWS = (20, 60, 120, 180, 252)
 BASELINE_FAST_WINDOW = min(ROLLING_WINDOWS)
 BASELINE_SIGNAL_WINDOW = max(ROLLING_WINDOWS)
+FEATURE_BUCKET_COLS = []
 
 
-def build_feature_cols(windows: tuple[int, ...]) -> list[str]:
-    feature_cols = ["log_return"]
-    for window in windows:
-        feature_cols.extend(
-            [
-                f"px_log_return_mean_{window}",
-                f"px_log_return_volatility_{window}",
-            ]
+def build_experiment_tag() -> str:
+    windows_str = "-".join(str(w) for w in ROLLING_WINDOWS)
+    return (
+        f"h{HORIZON}"
+        f"_top{TOP_K}"
+        f"_fee{FEE_BPS}"
+        f"_{TARGET_MODE}"
+        f"_{FEATURE_SET_MODE}"
+        f"_w{windows_str}"
+    )
+
+
+def add_excel_table(
+    writer: pd.ExcelWriter,
+    sheet_name: str,
+    table_name: str,
+    df: pd.DataFrame,
+    start_row: int = 1,
+    style_name: str = "TableStyleMedium2",
+    show_row_stripes: bool = True,
+) -> None:
+    if df.empty:
+        return
+
+    ws = writer.sheets[sheet_name]
+    nrows = len(df) + 1
+    ncols = len(df.columns)
+
+    end_col = get_column_letter(ncols)
+    start_excel_row = start_row
+    end_excel_row = start_row + nrows - 1
+    table_ref = f"A{start_excel_row}:{end_col}{end_excel_row}"
+
+    table = Table(displayName=table_name, ref=table_ref)
+    style = TableStyleInfo(
+        name=style_name,
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=show_row_stripes,
+        showColumnStripes=False,
+    )
+    table.tableStyleInfo = style
+    ws.add_table(table)
+
+
+from openpyxl.formatting.rule import CellIsRule, FormulaRule
+from openpyxl.styles import PatternFill, Font
+
+
+def add_compare_conditional_formatting(
+    writer: pd.ExcelWriter,
+    sheet_name: str,
+    n_data_rows: int,
+) -> None:
+    if n_data_rows == 0:
+        return
+
+    ws = writer.sheets[sheet_name]
+    row_start = 4
+    row_end = 3 + n_data_rows
+
+    # mocne, czytelne kolory
+    green_fill = PatternFill(fill_type="solid", fgColor="C6EFCE")
+    red_fill = PatternFill(fill_type="solid", fgColor="FFC7CE")
+
+    green_font = Font(color="006100", bold=True)
+    red_font = Font(color="9C0006", bold=True)
+
+    # D = Positive_IC_score_ratio
+    # dobre >= 0.5
+    ws.conditional_formatting.add(
+        f"D{row_start}:D{row_end}",
+        CellIsRule(
+            operator="greaterThanOrEqual",
+            formula=["0.5"],
+            fill=green_fill,
+            font=green_font,
+        ),
+    )
+    ws.conditional_formatting.add(
+        f"D{row_start}:D{row_end}",
+        CellIsRule(
+            operator="lessThan",
+            formula=["0.5"],
+            fill=red_fill,
+            font=red_font,
+        ),
+    )
+
+    # E:H
+    # dobre >= 0
+    # zle < 0
+    for col in ["E", "F", "G", "H"]:
+        ws.conditional_formatting.add(
+            f"{col}{row_start}:{col}{row_end}",
+            CellIsRule(
+                operator="greaterThanOrEqual",
+                formula=["0"],
+                fill=green_fill,
+                font=green_font,
+            ),
         )
-        if window > 1:
-            feature_cols.append(f"px_log_return_ratio_{window}")
+        ws.conditional_formatting.add(
+            f"{col}{row_start}:{col}{row_end}",
+            CellIsRule(
+                operator="lessThan",
+                formula=["0"],
+                fill=red_fill,
+                font=red_font,
+            ),
+        )
+
+
+for window in ROLLING_WINDOWS:
+    FEATURE_BUCKET_COLS.extend(
+        [
+            f"distance_from_high_{window}",
+            f"distance_from_min_{window}",
+        ]
+    )
+
+
+def build_feature_cols(windows: tuple[int, ...], mode: str) -> list[str]:
+    feature_cols = ["log_return"]
+    if mode == "momentum_only":
+        for window in windows:
+            feature_cols.extend(
+                [
+                    f"px_log_return_mean_{window}",
+                    f"px_log_return_volatility_{window}",
+                ]
+            )
+            if window > 1:
+                feature_cols.append(f"px_log_return_ratio_{window}")
+    elif mode == "distance_high_only":
+        for window in windows:
+            feature_cols.extend(
+                [
+                    f"distance_from_high_{window}",
+                ]
+            )
+    elif mode == "distance_low_only":
+        for window in windows:
+            feature_cols.extend(
+                [
+                    f"distance_from_min_{window}",
+                ]
+            )
+    elif mode == "momentum_plus_high":
+        for window in windows:
+            feature_cols.extend(
+                [
+                    f"px_log_return_mean_{window}",
+                    f"px_log_return_volatility_{window}",
+                    f"distance_from_high_{window}",
+                ]
+            )
+            if window > 1:
+                feature_cols.append(f"px_log_return_ratio_{window}")
+    elif mode == "momentum_plus_low":
+        for window in windows:
+            feature_cols.extend(
+                [
+                    f"px_log_return_mean_{window}",
+                    f"px_log_return_volatility_{window}",
+                    f"distance_from_min_{window}",
+                ]
+            )
+            if window > 1:
+                feature_cols.append(f"px_log_return_ratio_{window}")
+    elif mode == "all":
+        for window in windows:
+            feature_cols.extend(
+                [
+                    f"px_log_return_mean_{window}",
+                    f"px_log_return_volatility_{window}",
+                    f"distance_from_high_{window}",
+                    f"distance_from_min_{window}",
+                ]
+            )
+            if window > 1:
+                feature_cols.append(f"px_log_return_ratio_{window}")
+    else:
+        raise ValueError(f"There is no {mode} mode.")
     return feature_cols
 
 
-FEATURE_COLS = build_feature_cols(ROLLING_WINDOWS)
+FEATURE_COLS = build_feature_cols(ROLLING_WINDOWS, mode=FEATURE_SET_MODE)
+
+
+def target_col_name(horizon: int) -> str:
+    if TARGET_MODE == "absolute":
+        return f"target_log_ret_{horizon}d"
+    if TARGET_MODE == "excess":
+        return "target_excess"
+    raise ValueError("TARGET_MODE must be 'absolute' or 'excess'.")
+
+
+def add_model_target(df: pd.DataFrame, horizon: int) -> pd.DataFrame:
+    df = make_log_return_target(df, horizon=horizon)
+    if TARGET_MODE == "excess":
+        df = add_target_excess(df, horizon=horizon)
+    elif TARGET_MODE != "absolute":
+        raise ValueError("TARGET_MODE must be 'absolute' or 'excess'.")
+    return df
 
 
 def read_folds(path: Path) -> list[dict[str, str]]:
@@ -102,6 +303,7 @@ def add_bucket_metrics(
     bucket_input = df.dropna(subset=["score", target_col]).copy()
     bucket_input["target"] = bucket_input[target_col]
     buckets = add_top_buckets(bucket_input, top_k)
+    _, score_quality_metrics = add_score_quality_metrics(bucket_input, target_col)
 
     for key in (
         "bucket_n_days",
@@ -110,7 +312,70 @@ def add_bucket_metrics(
         "mean_bucket_spread",
     ):
         metrics[key] = buckets[key]
+    metrics.update(score_quality_metrics)
     return metrics
+
+
+def add_score_quality_metrics(
+    df: pd.DataFrame, target_col: str
+) -> tuple[pd.Series, dict]:
+    ic_score = df.groupby("date")[["score", target_col]].apply(
+        lambda x: x["score"].corr(x[target_col], method="spearman")
+    )
+    ic_score = ic_score.dropna()
+    Positive_IC_score_ratio = 0
+    if len(ic_score) > 0:
+        Positive_IC_score_ratio = sum(np.where(ic_score > 0, 1, 0)) / len(ic_score)
+    else:
+        Positive_IC_score_ratio = np.nan
+
+    IC_metrics = {
+        "IC_score_mean": ic_score.mean(),
+        "IC_score_median": ic_score.median(),
+        "IC_score_std": ic_score.std(ddof=0),
+        "IC_score_ndays": len(ic_score),
+        "Positive_IC_score_ratio": Positive_IC_score_ratio,
+    }
+
+    return ic_score, IC_metrics
+
+
+def feature_bucket_rows(
+    df: pd.DataFrame,
+    fold_name: str,
+    horizon: int,
+    features: tuple[str, ...],
+    top_k: int,
+) -> list[dict[str, Any]]:
+    target_col = target_col_name(horizon)
+    df_with_target = add_model_target(df, horizon=horizon)
+
+    rows = []
+    for feature in features:
+        bucket_input = (
+            df_with_target.replace([np.inf, -np.inf], np.nan)
+            .dropna(subset=[feature, target_col])
+            .copy()
+        )
+        bucket_input["score"] = bucket_input[feature]
+        bucket_input["target"] = bucket_input[target_col]
+
+        buckets = add_top_buckets(bucket_input, top_k)
+        _, score_quality_metrics = add_score_quality_metrics(bucket_input, target_col)
+        rows.append(
+            {
+                "fold": fold_name,
+                "feature_name": feature,
+                "top_k": top_k,
+                "bucket_n_days": buckets["bucket_n_days"],
+                "mean_top_buckets_return": buckets["mean_top_buckets_return"],
+                "mean_bottom_buckets_return": buckets["mean_bottom_buckets_return"],
+                "mean_bucket_spread": buckets["mean_bucket_spread"],
+                **score_quality_metrics,
+            }
+        )
+
+    return rows
 
 
 def feature_coefficient_rows(
@@ -119,8 +384,8 @@ def feature_coefficient_rows(
     horizon: int,
     features: list[str],
 ) -> list[dict[str, Any]]:
-    target_col = f"target_log_ret_{horizon}d"
-    df_with_target = make_log_return_target(df, horizon=horizon)
+    target_col = target_col_name(horizon)
+    df_with_target = add_model_target(df, horizon=horizon)
     feature_input = (
         df_with_target.replace([np.inf, -np.inf], np.nan)
         .dropna(subset=[*features, target_col])
@@ -221,9 +486,9 @@ def run_baseline_on_fold(
     top_k: int,
     holding_period: int,
 ) -> dict[str, float]:
-    target_col = f"target_log_ret_{HORIZON}d"
+    target_col = target_col_name(HORIZON)
     df_all = pd.concat([df_train, df_test], ignore_index=True)
-    df_all = make_log_return_target(df_all, horizon=HORIZON)
+    df_all = add_model_target(df_all, horizon=HORIZON)
     df_all = df_all.sort_values(["symbol", "date"]).reset_index(drop=True)
     df_all = add_baseline_signal_with_train_threshold(
         df_all,
@@ -247,8 +512,8 @@ def run_ml_on_fold(
     horizon: int,
     top_k: int,
 ) -> dict[str, float]:
-    target_col = f"target_log_ret_{horizon}d"
-    train_with_target = make_log_return_target(df_train, horizon=horizon)
+    target_col = target_col_name(horizon)
+    train_with_target = add_model_target(df_train, horizon=horizon)
     train_clean = (
         train_with_target[FEATURE_COLS + [target_col]]
         .replace([np.inf, -np.inf], np.nan)
@@ -261,14 +526,16 @@ def run_ml_on_fold(
     model = model_class(**model_kwargs)
     model.fit(train_clean[FEATURE_COLS], train_clean[target_col])
 
+    df_test_with_target = add_model_target(df_test, horizon=horizon)
     df_test_scored = (
-        df_test.replace([np.inf, -np.inf], np.nan).dropna(subset=FEATURE_COLS).copy()
+        df_test_with_target.replace([np.inf, -np.inf], np.nan)
+        .dropna(subset=FEATURE_COLS)
+        .copy()
     )
     if df_test_scored.empty:
         raise ValueError("Test fold is empty after dropping missing features.")
 
     df_test_scored["score"] = model.predict(df_test_scored[FEATURE_COLS])
-    df_test_scored = make_log_return_target(df_test_scored, horizon=horizon)
     df_test_scored = run_ml_strategy(df_test_scored, horizon, top_k)
 
     _, metrics = run_backtest_with_metrics(df_test_scored)
@@ -329,20 +596,116 @@ def save_results(
     display_rows: list[dict[str, str]],
     summary_rows: list[dict[str, str]],
     feature_ic_rows: list[dict[str, Any]],
+    feature_bucket_rows_: list[dict[str, Any]],
 ) -> Path:
     out_dir = ROOT / "results" / "backtests"
     out_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"ml_baseline_comparison_{timestamp}.xlsx"
 
-    with pd.ExcelWriter(out_path) as writer:
-        pd.DataFrame(all_metrics).to_excel(
-            writer, sheet_name="raw_metrics", index=False
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    experiment_tag = build_experiment_tag()
+    out_path = out_dir / f"ml_baseline_comparison_{experiment_tag}_{timestamp}.xlsx"
+
+    raw_metrics_df = pd.DataFrame(all_metrics)
+    folds_df = pd.DataFrame(display_rows)
+    summary_df = pd.DataFrame(summary_rows)
+    feature_ic_df = pd.DataFrame(feature_ic_rows)
+    feature_buckets_df = pd.DataFrame(feature_bucket_rows_)
+
+    compare_view_df = (
+        raw_metrics_df.loc[
+            raw_metrics_df["model"] != "Baseline",
+            [
+                "fold",
+                "model",
+                "final_net_equity",
+                "Positive_IC_score_ratio",
+                "vs_baseline_equity",
+                "vs_baseline_sharpe",
+                "IC_score_mean",
+                "mean_bucket_spread",
+            ],
+        ]
+        .rename(
+            columns={
+                "fold": "FOLD",
+                "model": "MODEL",
+                "final_net_equity": "FINAL_NET_EQUITY",
+                "Positive_IC_score_ratio": "Positive_IC_score_ratio",
+                "vs_baseline_equity": "vs_baseline_equity",
+                "vs_baseline_sharpe": "vs_baseline_SHARPE",
+                "IC_score_mean": "IC_score_mean",
+                "mean_bucket_spread": "MEAN_BUCKET_SPREAD",
+            }
         )
-        pd.DataFrame(display_rows).to_excel(writer, sheet_name="folds", index=False)
-        pd.DataFrame(summary_rows).to_excel(writer, sheet_name="summary", index=False)
-        pd.DataFrame(feature_ic_rows).to_excel(
-            writer, sheet_name="feature_ic", index=False
+        .sort_values(["FOLD", "MODEL"])
+        .reset_index(drop=True)
+    )
+
+    config_df = pd.DataFrame(
+        [
+            {"parameter": "HORIZON", "value": HORIZON},
+            {"parameter": "TOP_K", "value": TOP_K},
+            {"parameter": "FEE_BPS", "value": FEE_BPS},
+            {
+                "parameter": "BASELINE_HOLDING_PERIOD",
+                "value": BASELINE_HOLDING_PERIOD,
+            },
+            {"parameter": "TARGET_MODE", "value": TARGET_MODE},
+            {"parameter": "FEATURE_SET_MODE", "value": FEATURE_SET_MODE},
+            {
+                "parameter": "ROLLING_WINDOWS",
+                "value": ",".join(map(str, ROLLING_WINDOWS)),
+            },
+            {"parameter": "BASELINE_FAST_WINDOW", "value": BASELINE_FAST_WINDOW},
+            {"parameter": "BASELINE_SIGNAL_WINDOW", "value": BASELINE_SIGNAL_WINDOW},
+            {"parameter": "FEATURE_COLS", "value": ", ".join(FEATURE_COLS)},
+            {
+                "parameter": "FEATURE_BUCKET_COLS",
+                "value": ", ".join(FEATURE_BUCKET_COLS),
+            },
+        ]
+    )
+
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        raw_metrics_df.to_excel(writer, sheet_name="raw_metrics", index=False)
+        folds_df.to_excel(writer, sheet_name="folds", index=False)
+        summary_df.to_excel(writer, sheet_name="summary", index=False)
+        feature_ic_df.to_excel(writer, sheet_name="feature_ic", index=False)
+        feature_buckets_df.to_excel(writer, sheet_name="feature_buckets", index=False)
+        config_df.to_excel(writer, sheet_name="config", index=False)
+
+        compare_view_df.to_excel(
+            writer,
+            sheet_name="compare_view",
+            index=False,
+            startrow=2,
+        )
+
+        add_excel_table(writer, "raw_metrics", "tbl_raw_metrics", raw_metrics_df)
+        add_excel_table(writer, "folds", "tbl_folds", folds_df)
+        add_excel_table(writer, "summary", "tbl_summary", summary_df)
+        add_excel_table(writer, "feature_ic", "tbl_feature_ic", feature_ic_df)
+        add_excel_table(
+            writer,
+            "feature_buckets",
+            "tbl_feature_buckets",
+            feature_buckets_df,
+        )
+        add_excel_table(writer, "config", "tbl_config", config_df)
+        add_excel_table(
+            writer,
+            "compare_view",
+            "tbl_compare_view",
+            compare_view_df,
+            start_row=3,
+            style_name="TableStyleLight1",
+            show_row_stripes=False,
+        )
+
+        add_compare_conditional_formatting(
+            writer,
+            "compare_view",
+            len(compare_view_df),
         )
 
     return out_path
@@ -366,6 +729,9 @@ def result_row(
         "bucket_bottom": fmt(metrics["mean_bottom_buckets_return"], "pct"),
         "bucket_spread": fmt(metrics["mean_bucket_spread"], "pct"),
         "bucket_days": fmt(metrics["bucket_n_days"], "int"),
+        "score_ic": fmt(metrics["IC_score_mean"]),
+        "score_ic_pos": fmt(metrics["Positive_IC_score_ratio"], "pct"),
+        "score_ic_days": fmt(metrics["IC_score_ndays"], "int"),
         "days": fmt(metrics["n_days"], "int"),
     }
 
@@ -385,6 +751,9 @@ def summarize_results(results: list[dict[str, Any]]) -> list[dict[str, str]]:
             "avg_bucket_bottom": group["mean_bottom_buckets_return"].mean(),
             "avg_bucket_spread": group["mean_bucket_spread"].mean(),
             "avg_bucket_days": group["bucket_n_days"].mean(),
+            "avg_score_ic": group["IC_score_mean"].mean(),
+            "avg_score_ic_positive_rate": group["Positive_IC_score_ratio"].mean(),
+            "avg_score_ic_days": group["IC_score_ndays"].mean(),
             "avg_vs_baseline_equity": group["vs_baseline_equity"].mean(),
             "avg_vs_baseline_sharpe": group["vs_baseline_sharpe"].mean(),
         }
@@ -412,11 +781,47 @@ def summarize_results(results: list[dict[str, Any]]) -> list[dict[str, str]]:
                 "bucket_bottom": fmt(values["avg_bucket_bottom"], "pct"),
                 "bucket_spread": fmt(values["avg_bucket_spread"], "pct"),
                 "bucket_days": fmt(values["avg_bucket_days"]),
+                "score_ic": fmt(values["avg_score_ic"]),
+                "score_ic_pos": fmt(values["avg_score_ic_positive_rate"], "pct"),
+                "score_ic_days": fmt(values["avg_score_ic_days"]),
             }
         )
     return sorted(
         summary, key=lambda row: float(row["sharpe"].replace(",", "")), reverse=True
     )
+
+
+def feature_bucket_display_rows(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [
+        {
+            "fold": row["fold"],
+            "feature": row["feature_name"],
+            "top": fmt(row["mean_top_buckets_return"], "pct"),
+            "bottom": fmt(row["mean_bottom_buckets_return"], "pct"),
+            "spread": fmt(row["mean_bucket_spread"], "pct"),
+            "score_ic": fmt(row["IC_score_mean"]),
+            "ic_pos": fmt(row["Positive_IC_score_ratio"], "pct"),
+            "days": fmt(row["bucket_n_days"], "int"),
+        }
+        for row in rows
+    ]
+
+
+def summarize_feature_buckets(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    summary = []
+    for feature_name, group in pd.DataFrame(rows).groupby("feature_name"):
+        summary.append(
+            {
+                "feature": feature_name,
+                "top": fmt(group["mean_top_buckets_return"].mean(), "pct"),
+                "bottom": fmt(group["mean_bottom_buckets_return"].mean(), "pct"),
+                "spread": fmt(group["mean_bucket_spread"].mean(), "pct"),
+                "score_ic": fmt(group["IC_score_mean"].mean()),
+                "ic_pos": fmt(group["Positive_IC_score_ratio"].mean(), "pct"),
+                "days": fmt(group["bucket_n_days"].mean()),
+            }
+        )
+    return summary
 
 
 def main() -> None:
@@ -425,7 +830,9 @@ def main() -> None:
     print("=" * 88)
     print(
         f"horizon={HORIZON}, top_k={TOP_K}, fee_bps={FEE_BPS}, "
-        f"baseline_holding_period={BASELINE_HOLDING_PERIOD}"
+        f"baseline_holding_period={BASELINE_HOLDING_PERIOD}, "
+        f"target_mode={TARGET_MODE}, "
+        f"feature_set_mode={FEATURE_SET_MODE}"
     )
 
     folds = read_folds(ROOT / "configs" / "folds.yaml")
@@ -450,6 +857,7 @@ def main() -> None:
 
     all_metrics: list[dict[str, Any]] = []
     feature_ic_rows: list[dict[str, Any]] = []
+    feature_bucket_rows_: list[dict[str, Any]] = []
 
     for idx, fold in enumerate(folds, start=1):
         fold_name = f"Fold {idx}"
@@ -464,6 +872,15 @@ def main() -> None:
         )
         feature_ic_rows.extend(
             feature_coefficient_rows(df_test, fold_name, HORIZON, FEATURE_COLS)
+        )
+        feature_bucket_rows_.extend(
+            feature_bucket_rows(
+                df_test,
+                fold_name,
+                HORIZON,
+                FEATURE_BUCKET_COLS,
+                TOP_K,
+            )
         )
 
         for model_name, model_spec in models.items():
@@ -493,7 +910,11 @@ def main() -> None:
     display_rows = [result_row(row["fold"], row["model"], row) for row in all_metrics]
     summary_rows = summarize_results(all_metrics)
     results_path = save_results(
-        all_metrics, display_rows, summary_rows, feature_ic_rows
+        all_metrics,
+        display_rows,
+        summary_rows,
+        feature_ic_rows,
+        feature_bucket_rows_,
     )
 
     columns = [
@@ -511,6 +932,9 @@ def main() -> None:
         ("bucket_bottom", "Bottom bucket"),
         ("bucket_spread", "Bucket spread"),
         ("bucket_days", "Bucket days"),
+        ("score_ic", "Score IC"),
+        ("score_ic_pos", "IC > 0"),
+        ("score_ic_days", "IC days"),
         ("days", "Days"),
     ]
 
@@ -551,6 +975,45 @@ def main() -> None:
             ("bucket_bottom", "Avg bottom bucket"),
             ("bucket_spread", "Avg bucket spread"),
             ("bucket_days", "Avg bucket days"),
+            ("score_ic", "Avg score IC"),
+            ("score_ic_pos", "Avg IC > 0"),
+            ("score_ic_days", "Avg IC days"),
+        ],
+    )
+
+    feature_bucket_columns = [
+        ("fold", "Fold"),
+        ("feature", "Feature"),
+        ("top", "Top bucket"),
+        ("bottom", "Bottom bucket"),
+        ("spread", "Bucket spread"),
+        ("score_ic", "Feature IC"),
+        ("ic_pos", "IC > 0"),
+        ("days", "Days"),
+    ]
+
+    print()
+    print("=" * 88)
+    print("Bucket return dla cech")
+    print("=" * 88)
+    print_table(
+        feature_bucket_display_rows(feature_bucket_rows_), feature_bucket_columns
+    )
+
+    print()
+    print("=" * 88)
+    print("Srednie bucket return dla cech")
+    print("=" * 88)
+    print_table(
+        summarize_feature_buckets(feature_bucket_rows_),
+        [
+            ("feature", "Feature"),
+            ("top", "Avg top bucket"),
+            ("bottom", "Avg bottom bucket"),
+            ("spread", "Avg bucket spread"),
+            ("score_ic", "Avg feature IC"),
+            ("ic_pos", "Avg IC > 0"),
+            ("days", "Avg days"),
         ],
     )
     print()

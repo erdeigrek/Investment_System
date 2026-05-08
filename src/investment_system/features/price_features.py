@@ -69,6 +69,68 @@ def add_px_log_return_ratio(df: pd.DataFrame, window: int) -> pd.DataFrame:
     return df
 
 
+def add_distance_from_high(df: pd.DataFrame, window: int) -> pd.DataFrame:
+    eps = 1e-12
+    df = df.sort_values(["symbol", "date"])
+    df[f"rolling_high_{str(window)}_close"] = (
+        df.groupby("symbol")["close"]
+        .rolling(window=window)
+        .max()
+        .reset_index(level=0, drop=True)
+    )
+    df[f"distance_from_high_{str(window)}"] = np.log(
+        df["close"] / df[f"rolling_high_{str(window)}_close"]
+    )
+
+    if (df["close"] > df[f"rolling_high_{str(window)}_close"]).any():
+        raise ValueError("Column 'close' canot be greater than rolling high ")
+    if ((df[f"distance_from_high_{str(window)}"]) > eps).any():
+        raise ValueError(
+            f"Column distance_from_high_{str(window)} canot be greater than 0"
+        )
+
+    mask = (df["close"] == df[f"rolling_high_{str(window)}_close"]) & (
+        abs(df[f"distance_from_high_{str(window)}"]) > eps
+    )
+
+    if mask.any():
+        raise ValueError(
+            f"Column distance_from_high_{str(window)} must be equal 0 when close is equal rolling_high"
+        )
+    return df
+
+
+def add_distance_from_low(df: pd.DataFrame, window: int) -> pd.DataFrame:
+    eps = 1e-12
+    df = df.sort_values(["symbol", "date"])
+    df[f"rolling_min_{str(window)}_close"] = (
+        df.groupby("symbol")["close"]
+        .rolling(window=window)
+        .min()
+        .reset_index(level=0, drop=True)
+    )
+    df[f"distance_from_min_{str(window)}"] = np.log(
+        df["close"] / df[f"rolling_min_{str(window)}_close"]
+    )
+
+    if (df["close"] < df[f"rolling_min_{str(window)}_close"]).any():
+        raise ValueError("Column 'close' canot be lower than rolling min ")
+    if ((df[f"distance_from_min_{str(window)}"]) < -eps).any():
+        raise ValueError(
+            f"Column distance_from_min_{str(window)} canot be lower than 0"
+        )
+
+    mask = (df["close"] == df[f"rolling_min_{str(window)}_close"]) & (
+        abs(df[f"distance_from_min_{str(window)}"]) > eps
+    )
+
+    if mask.any():
+        raise ValueError(
+            f"Column distance_from_min_{str(window)} must be equal 0 when close is equal rolling_min"
+        )
+    return df
+
+
 def validate_data(df: pd.DataFrame) -> None:
 
     required_cols = {"symbol", "date", "close", "open"}
@@ -105,5 +167,7 @@ def add_price_features(
         df = add_px_log_return_mean(df, window)
         df = add_px_log_return_volatility(df, window)
         df = add_px_log_return_ratio(df, window)
+        df = add_distance_from_high(df, window)
+        df = add_distance_from_low(df, window)
 
     return df

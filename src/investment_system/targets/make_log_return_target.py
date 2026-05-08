@@ -2,8 +2,15 @@ import pandas as pd
 import numpy as np
 from investment_system.features.price_features import sort_data
 
-def make_log_return_target(df: pd.DataFrame, symbol_col: str = "symbol", date_col: str = "date", close_col: str = "close", horizon: int = 1) -> pd.DataFrame:
-    
+
+def make_log_return_target(
+    df: pd.DataFrame,
+    symbol_col: str = "symbol",
+    date_col: str = "date",
+    close_col: str = "close",
+    horizon: int = 1,
+) -> pd.DataFrame:
+
     out = df.copy()
 
     out = sort_data(out)
@@ -11,19 +18,29 @@ def make_log_return_target(df: pd.DataFrame, symbol_col: str = "symbol", date_co
 
     if mask.any():
         raise ValueError("Duplicated data exists.")
-    
+
     if not isinstance(horizon, int):
         raise TypeError("Horizon variable  must be an integer type")
-    
+
     if horizon <= 0:
         raise ValueError("Horizon value must be greater than 0")
-    
+
     entry_price = out.groupby(symbol_col)["open"].shift(-1)
     future_price = out.groupby(symbol_col)[close_col].shift(-horizon)
-    
+
     target_col = f"target_log_ret_{horizon}d"
     if target_col in out.columns:
-        raise ValueError(f"Column {target_col} exists. You can't overwrite this column.")
-    out[target_col] = np.log(future_price/entry_price)
+        raise ValueError(
+            f"Column {target_col} exists. You can't overwrite this column."
+        )
+    out[target_col] = np.log(future_price / entry_price)
 
     return out
+
+
+def add_target_excess(df: pd.DataFrame, horizon) -> pd.DataFrame:
+
+    df["target_excess"] = df[f"target_log_ret_{horizon}d"] - df.groupby("date")[
+        f"target_log_ret_{horizon}d"
+    ].transform("mean")
+    return df
