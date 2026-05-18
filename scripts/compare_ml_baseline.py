@@ -42,7 +42,7 @@ from investment_system.targets.make_log_return_target import (
     add_target_excess,
     make_log_return_target,
 )
-
+from investment_system.pipelines.make_dataset import make_dataset_from_parquet
 
 import numpy as np
 import pandas as pd
@@ -251,6 +251,7 @@ def build_feature_cols(windows: tuple[int, ...], mode: str) -> list[str]:
 
 
 FEATURE_COLS = build_feature_cols(ROLLING_WINDOWS, mode=FEATURE_SET_MODE)
+FEATURE_COLS.append("sentiment_score")
 
 
 def target_col_name(horizon: int) -> str:
@@ -838,8 +839,10 @@ def main() -> None:
     folds = read_folds(ROOT / "configs" / "folds.yaml")
 
     prices_path = ROOT / "data" / "raw" / "prices.parquet"
-    df = pd.read_parquet(prices_path)
-    df = add_price_features(df, ROLLING_WINDOWS)
+    sentiment_path = ROOT / "data" / "processed" / "sentiment_data.parquet"
+    df = make_dataset_from_parquet(
+        prices_path, sentiment_path, ROLLING_WINDOWS, HORIZON
+    )
 
     models = {
         "Baseline": None,

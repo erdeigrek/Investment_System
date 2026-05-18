@@ -2,11 +2,13 @@ import pandas as pd
 import numpy as np
 from investment_system.strategies.baseline import run_baseline_strategy
 from investment_system.pipelines.make_dataset import make_dataset
+from pathlib import Path
 
 HOLDING = 20
 ROLLING_WINDOWS = (1, 5, 15)
 TOP_K = 5
 PERIODS = 730
+DATA_ROOT = Path(r"data/processed/sentiment_data.parquet")
 dates = pd.date_range(start="2022-01-01", periods=PERIODS)
 
 
@@ -38,8 +40,7 @@ df = pd.DataFrame(
 )
 
 df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
-
-df = make_dataset(df, ROLLING_WINDOWS, HOLDING)
+df = make_dataset(df, DATA_ROOT, ROLLING_WINDOWS)
 df = run_baseline_strategy(df, 5, HOLDING, ROLLING_WINDOWS)
 
 
